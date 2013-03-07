@@ -90,7 +90,7 @@ module Kss
         next if line.strip.empty?
         indent = line.scan(/^\s*/)[0].to_s.size
 
-        if last_indent && indent > last_indent
+        if modifiers.any? && last_indent && indent > last_indent
           modifiers.last.description += line.squeeze(" ")
         else
           modifier, desc = line.split(" - ")
