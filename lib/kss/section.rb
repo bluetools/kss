@@ -20,24 +20,29 @@ module Kss
       @filename = filename
     end
 
+    class CommentSection < Struct.new(:comment, :modifiers, :section)
+    end
+
     # Splits up the raw comment text into comment sections that represent
     # description, modifiers, etc.
     #
     # Returns an Array of comment Strings.
     def comment_sections
-      @comment_sections ||= raw ? raw.split("\n\n") : []
+      return @comment_sections if @comment_sections
+
+      @comment_sections = raw ? raw.split("\n\n").collect { |s| CommentSection.new(s, [], false) } : []
+
+      @comment_sections.each do |comment_section|
+        comment_section.modifiers = parse_modifiers(comment_section.comment)
+        comment_section.section = parse_section(comment_section.comment)
+      end
     end
 
     # Public: The styleguide section for which this comment block references.
     #
     # Returns the section reference String (ex: "2.1.8").
     def section
-      return @section unless @section.nil?
-
-      cleaned  = section_comment.strip.sub(/\.$/, '') # Kill trailing period
-      @section = cleaned.match(/Styleguide (.+)/)[1]
-
-      @section
+      comment_sections.map(&:section).select { |section| section }.last
     end
 
     # Public: The description section of a styleguide comment block.
@@ -45,21 +50,43 @@ module Kss
     # Returns the description String.
     def description
       comment_sections.reject do |section|
-        section == section_comment ||
-        section == modifiers_comment
-      end.join("\n\n")
+        section.modifiers.any? or section.section
+      end.map(&:comment).join("\n\n")
     end
 
     # Public: The modifiers section of a styleguide comment block.
     #
     # Returns an Array of Modifiers.
     def modifiers
+      comment_sections.collect do |section|
+        section.modifiers
+      end.flatten
+    end
+
+  private
+
+    def section_comment
+      comment_sections.find do |text|
+        text =~ /Styleguide \d/i
+      end.to_s
+    end
+
+    # Private: Given a comment section, detects if is describes the Styleguide section
+    # and returns the section when foudn
+    def parse_section(comment_section)
+      cleaned  = comment_section.strip.sub(/\.$/, '') # Kill trailing period
+      if cleaned.match(/Styleguide (.+)/)
+        $1
+      else
+        false
+      end
+    end
+
+    def parse_modifiers(comment_section)
       last_indent = nil
       modifiers = []
 
-      return modifiers unless modifiers_comment
-
-      modifiers_comment.split("\n").each do |line|
+      comment_section.split("\n").each do |line|
         next if line.strip.empty?
         indent = line.scan(/^\s*/)[0].to_s.size
 
@@ -74,20 +101,6 @@ module Kss
       end
 
       modifiers
-    end
-
-  private
-  
-    def section_comment
-      comment_sections.find do |text|
-        text =~ /Styleguide \d/i
-      end.to_s
-    end
-  
-    def modifiers_comment
-      comment_sections[1..-1].reject do |section|
-        section == section_comment
-      end.last
     end
   end
 end
